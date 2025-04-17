@@ -1,17 +1,17 @@
 import { aptosClient, isSendableNetwork } from "@/utils";
 import {
   Account,
-  AccountAddress,
   AccountAuthenticator,
   AnyRawTransaction,
   Ed25519Account,
-  parseTypeTag,
+  Ed25519PrivateKey,
   U64,
 } from "@aptos-labs/ts-sdk";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { useState } from "react";
 import { TransactionHash } from "../TransactionHash";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { useToast } from "../ui/use-toast";
 import { LabelValueGrid } from "../LabelValueGrid";
@@ -24,7 +24,8 @@ script {
     }
 }
 */
-const TRANSFER_SCRIPT = "0xa11ceb0b0700000a0601000203020605080d071525083a40107a1f010200030201000104060c060c05030003060c0503083c53454c463e5f30046d61696e0d6170746f735f6163636f756e74087472616e73666572ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000114636f6d70696c6174696f6e5f6d65746164617461090003322e3003322e31000001070b000b01010b020b03110002"
+const TRANSFER_SCRIPT =
+  "0xa11ceb0b0700000a0601000203020605080d071525083a40107a1f010200030201000104060c060c05030003060c0503083c53454c463e5f30046d61696e0d6170746f735f6163636f756e74087472616e73666572ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000114636f6d70696c6174696f6e5f6d65746164617461090003322e3003322e31000001070b000b01010b020b03110002";
 export function MultiAgent() {
   const { toast } = useToast();
   const { connected, account, network, signTransaction, submitTransaction } =
@@ -40,6 +41,9 @@ export function MultiAgent() {
   const [secondarySignerAuthenticator, setSecondarySignerAuthenticator] =
     useState<AccountAuthenticator>();
 
+  const [inputSecondaryPrivateKey, setInputSecondaryPrivateKey] =
+    useState<string>("");
+
   let sendable = isSendableNetwork(connected, network?.name);
 
   const generateTransaction = async (): Promise<AnyRawTransaction> => {
@@ -50,7 +54,24 @@ export function MultiAgent() {
       throw new Error("no network");
     }
 
-    const secondarySigner = Account.generate();
+    const generatedAccount = Account.generate();
+    const generatedPrivateKey = generatedAccount.privateKey.toString();
+    const privateKeyHexToUsed = inputSecondaryPrivateKey || generatedPrivateKey;
+    const privateKeyBytes = Buffer.from(
+      privateKeyHexToUsed.replace("0x", ""),
+      "hex"
+    );
+
+    if (privateKeyBytes.length !== 32) {
+      throw new Error("Invalid private key length. Expected 32 bytes.");
+    }
+
+    // 1. Legacy Ed25519
+    const ed25519PrivateKey = new Ed25519PrivateKey(privateKeyBytes);
+    const secondarySigner = Account.fromPrivateKey({
+      privateKey: ed25519PrivateKey,
+    });
+
     setSecondarySignerAccount(secondarySigner);
 
     const transactionToSign = await aptosClient(
@@ -88,10 +109,13 @@ export function MultiAgent() {
       throw new Error("No secondarySignerAccount");
     }
     try {
-      if(!secondarySignerAccount) {
+      if (!secondarySignerAccount) {
         throw new Error("No secondarySignerAccount");
       }
-      const authenticator = aptosClient(network).sign({signer: secondarySignerAccount, transaction: transactionToSubmit});
+      const authenticator = aptosClient(network).sign({
+        signer: secondarySignerAccount,
+        transaction: transactionToSubmit,
+      });
       setSecondarySignerAuthenticator(authenticator);
     } catch (error) {
       console.error(error);
@@ -135,6 +159,11 @@ export function MultiAgent() {
       </CardHeader>
       <CardContent className="flex flex-col gap-8">
         <div className="flex flex-wrap gap-4">
+          <Input
+            value={inputSecondaryPrivateKey}
+            placeholder="Options: input your privateKey for secondary that have money"
+            onChange={(e) => setInputSecondaryPrivateKey(e.target.value)}
+          ></Input>
           <Button onClick={onSenderSignTransaction} disabled={!sendable}>
             Sign as sender
           </Button>
