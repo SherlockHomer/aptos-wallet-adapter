@@ -161,6 +161,7 @@ export function MultiAgent() {
         <div className="flex flex-wrap gap-4">
           <Input
             value={inputSecondaryPrivateKey}
+            type="password"
             placeholder="Options: input your privateKey for secondary that have money"
             onChange={(e) => setInputSecondaryPrivateKey(e.target.value)}
           ></Input>
